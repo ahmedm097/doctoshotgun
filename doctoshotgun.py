@@ -61,8 +61,68 @@ def log_ts(text=None, *args, **kwargs):
         log(text, *args, **kwargs)
 
 
-class Website(): # aggregate function
+class Patient(): #aggregate root function
 
+    def redirect(self):
+        return self.doc['redirection']
+    
+    def build_doc(self, content):
+        return ""  # Do not choke on empty response from server
+
+    def get_patients(self):
+        return self.doc
+
+    def get_name(self):
+        return '%s %s' % (self.doc[0]['first_name'], self.doc[0]['last_name'])
+
+    def do_login(self, code):
+        try:
+            self.open(self.BASEURL + '/sessions/new')
+        except ServerError as e:
+            if e.response.status_code in [503] \
+                and 'text/html' in e.response.headers['Content-Type'] \
+                    and ('cloudflare' in e.response.text or 'Checking your browser before accessing' in e .response.text):
+                log('Request blocked by CloudFlare', color='red')
+            if e.response.status_code in [520]:
+                log('Cloudflare is unable to connect to Doctolib server. Please retry later.', color='red')
+            raise
+        try:
+            self.login.go(json={'kind': 'patient',
+                                'username': self.username,
+                                'password': self.password,
+                                'remember': True,
+                                'remember_username': True})
+        except ClientError:
+            print('Wrong login/password')
+            return False
+
+        if self.page.redirect() == "/sessions/two-factor":
+            print("Requesting 2fa code...")
+            if not code:
+                if not sys.__stdin__.isatty():
+                    log("Auth Code input required, but no interactive terminal available. Please provide it via command line argument '--code'.", color='red')
+                    return False
+                self.send_auth_code.go(
+                    json={'two_factor_auth_method': 'email'}, method="POST")
+                code = input("Enter auth code: ")
+            try:
+                self.challenge.go(
+                    json={'auth_code': code, 'two_factor_auth_method': 'email'}, method="POST")
+            except HTTPNotFound:
+                print("Invalid auth code")
+                return False
+
+        return True
+
+    def get_patients(self):
+        self.master_patient.go()
+
+        return self.page.get_patients()
+
+    
+
+PatientObject = Patient() # function object
+class Session(cloudscraper.CloudScraper):
     def send(self, *args, **kwargs):
         callback = kwargs.pop('callback', lambda future, response: response)
         is_async = kwargs.pop('is_async', False)
@@ -74,16 +134,22 @@ class Website(): # aggregate function
 
         return callback(self, resp)
 
-    def redirect(self):
-        return self.doc['redirection']
+
+class LoginPage(JsonPage):
+     Patient.redirect(PatientObject)
+        
 
 
+class SendAuthCodePage(JsonPage):
+    Patient.build_doc(PatientObject, PatientObject.content)
+
+
+class ChallengePage(JsonPage):
     def build_doc(self, content):
         return ""  # Do not choke on empty response from server
 
-    def build_doc(self, content):
-        return ""  # Do not choke on empty response from server
-    
+
+class CentersPage(HTMLPage):
     def iter_centers_ids(self):
         for div in self.doc.xpath('//div[@class="js-dl-search-results-calendar"]'):
             data = json.loads(div.attrib['data-props'])
@@ -118,6 +184,15 @@ class Website(): # aggregate function
         
         return None
 
+class CenterResultPage(JsonPage):
+    pass
+
+
+class CenterPage(HTMLPage):
+    pass
+
+
+class CenterBookingPage(JsonPage):
     def find_motive(self, regex, singleShot=False):
         for s in self.doc['data']['visit_motives']:
             # ignore case as some doctors use their own spelling
@@ -156,6 +231,8 @@ class Website(): # aggregate function
     def get_profile_id(self):
         return self.doc['data']['profile']['id']
 
+
+class AvailabilitiesPage(JsonPage):
     def find_best_slot(self, start_date=None, end_date=None):
         for a in self.doc['availabilities']:
             date = parse_date(a['date']).date()
@@ -165,87 +242,20 @@ class Website(): # aggregate function
                 continue
             return a['slots'][-1]
 
+
+class AppointmentPage(JsonPage):
     def get_error(self):
         return self.doc['error']
 
     def is_error(self):
         return 'error' in self.doc
 
+
+class AppointmentEditPage(JsonPage):
     def get_custom_fields(self):
         for field in self.doc['appointment']['custom_fields']:
             if field['required']:
                 yield field
-
-
-    def get_patients(self):
-        return self.doc
-
-    def get_name(self):
-        return '%s %s' % (self.doc[0]['first_name'], self.doc[0]['last_name'])
-
-
-
-WebsiteObject = Website()  # fuction object
-
-class Session(cloudscraper.CloudScraper):
-    Website.send(WebsiteObject, WebsiteObject.args, WebsiteObject.kwargs)
-    
-
-
-class LoginPage(JsonPage):
-    Website.redirect(WebsiteObject)
-
-
-class SendAuthCodePage(JsonPage):
-  
-  Website.build_doc(WebsiteObject, WebsiteObject.content)
-      
-
-class ChallengePage(JsonPage):
-    
-    Website.build_doc(WebsiteObject, WebsiteObject.content)
-        
-
-
-class CentersPage(HTMLPage):
-  
-    Website.iter_centers_ids(WebsiteObject)
-
-    Website.get_next_page(WebsiteObject)
-
-class CenterResultPage(JsonPage):
-    pass
-
-
-class CenterPage(HTMLPage):
-    pass
-
-
-class CenterBookingPage(JsonPage):
-    Website.find_motive(WebsiteObject, WebsiteObject.regex, singleShot=False)
-
-    Website.get_motives(WebsiteObject)
-    Website.get_places(WebsiteObject)
-
-    Website.get_practice(WebsiteObject)
-
-    Website.get_agenda_ids(WebsiteObject, WebsiteObject.motive_id, practice_id=None)
-
-    Website.get_profile_id(WebsiteObject)
-
-
-class AvailabilitiesPage(JsonPage):
-    Website.find_best_slot(WebsiteObject, start_date=None, end_date=None)
-
-class AppointmentPage(JsonPage):
-    Website.get_error(WebsiteObject)
-        
-
-    Website.is_error(WebsiteObject)
-
-
-class AppointmentEditPage(JsonPage):
-    Website.get_custom_fields(WebsiteObject)
 
 
 class AppointmentPostPage(JsonPage):
@@ -253,9 +263,11 @@ class AppointmentPostPage(JsonPage):
 
 
 class MasterPatientPage(JsonPage):
-    Website.get_patients(WebsiteObject)
+    Patient.get_patients(PatientObject)
 
-    Website.get_name(WebsiteObject)
+    Patient.get_name(PatientObject)
+    
+
 
 class CityNotFound(Exception):
     pass
@@ -301,45 +313,8 @@ class Doctolib(LoginBrowser):
 
         self.patient = None
 
-    def do_login(self, code):
-        try:
-            self.open(self.BASEURL + '/sessions/new')
-        except ServerError as e:
-            if e.response.status_code in [503] \
-                and 'text/html' in e.response.headers['Content-Type'] \
-                    and ('cloudflare' in e.response.text or 'Checking your browser before accessing' in e .response.text):
-                log('Request blocked by CloudFlare', color='red')
-            if e.response.status_code in [520]:
-                log('Cloudflare is unable to connect to Doctolib server. Please retry later.', color='red')
-            raise
-        try:
-            self.login.go(json={'kind': 'patient',
-                                'username': self.username,
-                                'password': self.password,
-                                'remember': True,
-                                'remember_username': True})
-        except ClientError:
-            print('Wrong login/password')
-            return False
-
-        if self.page.redirect() == "/sessions/two-factor":
-            print("Requesting 2fa code...")
-            if not code:
-                if not sys.__stdin__.isatty():
-                    log("Auth Code input required, but no interactive terminal available. Please provide it via command line argument '--code'.", color='red')
-                    return False
-                self.send_auth_code.go(
-                    json={'two_factor_auth_method': 'email'}, method="POST")
-                code = input("Enter auth code: ")
-            try:
-                self.challenge.go(
-                    json={'auth_code': code, 'two_factor_auth_method': 'email'}, method="POST")
-            except HTTPNotFound:
-                print("Invalid auth code")
-                return False
-
-        return True
-
+    Patient.do_login(PatientObject, PatientObject.code)
+        
     def find_centers(self, where, motives=None, page=1):
         if motives is None:
             motives = self.vaccine_motives.keys()
@@ -382,10 +357,8 @@ class Doctolib(LoginBrowser):
                 for center in self.find_centers(where, motives, next_page):
                     yield center
 
-    def get_patients(self):
-        self.master_patient.go()
-
-        return self.page.get_patients()
+    Patient.get_patients(PatientObject)
+        
 
     @classmethod
     def normalize(cls, string):
