@@ -60,11 +60,6 @@ def log_ts(text=None, *args, **kwargs):
     if text:
         log(text, *args, **kwargs)
 
-class CompositeWebsite(): #composite function
-    def __init__(self): #constructor
-        self.child_websites = []
-    def add(self,website): #add leafs/subclasses method
-        self.child_websites.append(website)
 
 class Session(cloudscraper.CloudScraper):
     def send(self, *args, **kwargs):
@@ -218,33 +213,6 @@ class MasterPatientPage(JsonPage):
 class CityNotFound(Exception):
     pass
 
-#store all leafs/subclasses in a variable name 
-session = Session()
-loginpage = LoginPage()
-sendauthcodepage = SendAuthCodePage()
-challengepage = ChallengePage()
-centerspage = CentersPage()
-centerbookingpage = CenterBookingPage()
-availabilitiespage = AvailabilitiesPage()
-appointmentpage = AppointmentPage()
-appointmenteditpage = AppointmentEditPage()
-appointmentpostpage = AppointmentPostPage()
-masterpatientpage = MasterPatientPage()
-
-
-composite = CompositeWebsite() #function object 
-#add leafs/subclasses to composite function
-composite.add(session)
-composite.add(loginpage)
-composite.add(sendauthcodepage)
-composite.add(challengepage)
-composite.add(centerspage)
-composite.add(centerbookingpage)
-composite.add(availabilitiespage)
-composite.add(appointmentpage)
-composite.add(appointmenteditpage)
-composite.add(appointmentpostpage) 
-composite.add(masterpatientpage)
 
 class Doctolib(LoginBrowser):
     # individual properties for each country. To be defined in subclasses
@@ -286,7 +254,10 @@ class Doctolib(LoginBrowser):
 
         self.patient = None
 
-    def do_login(self, code):
+    class do_login(self, code):
+       
+       def cloud_fare() -> str:
+
         try:
             self.open(self.BASEURL + '/sessions/new')
         except ServerError as e:
@@ -297,6 +268,8 @@ class Doctolib(LoginBrowser):
             if e.response.status_code in [520]:
                 log('Cloudflare is unable to connect to Doctolib server. Please retry later.', color='red')
             raise
+        
+        def log_in_info() -> str:
         try:
             self.login.go(json={'kind': 'patient',
                                 'username': self.username,
@@ -307,6 +280,7 @@ class Doctolib(LoginBrowser):
             print('Wrong login/password')
             return False
 
+        def session_auth() -> str:
         if self.page.redirect() == "/sessions/two-factor":
             print("Requesting 2fa code...")
             if not code:
@@ -325,9 +299,11 @@ class Doctolib(LoginBrowser):
 
         return True
 
-    def find_centers(self, where, motives=None, page=1):
+    class find_centers(self, where, motives=None, page=1):
         if motives is None:
             motives = self.vaccine_motives.keys()
+
+        def location() -> str:
         for city in where:
             try:
                 self.centers.go(where=city, params={
@@ -348,6 +324,7 @@ class Doctolib(LoginBrowser):
 
             next_page = self.page.get_next_page()
 
+            def iter_center() -> str:
             for i in self.page.iter_centers_ids():
                 page = self.center_result.open(
                     id=i,
@@ -363,6 +340,7 @@ class Doctolib(LoginBrowser):
                 except KeyError:
                     pass
 
+            def nextpage() -> str:
             if next_page:
                 for center in self.find_centers(where, motives, next_page):
                     yield center
@@ -895,4 +873,4 @@ if __name__ == '__main__':
         sys.exit(Application().main())
     except KeyboardInterrupt:
         print('Abort.')
-        sys.exit(1) 
+        sys.exit(1)
