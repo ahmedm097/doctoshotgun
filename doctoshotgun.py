@@ -254,7 +254,10 @@ class Doctolib(LoginBrowser):
 
         self.patient = None
 
-    def do_login(self, code):
+    class do_login(self, code):
+       
+       def cloud_fare() -> str:
+
         try:
             self.open(self.BASEURL + '/sessions/new')
         except ServerError as e:
@@ -265,6 +268,8 @@ class Doctolib(LoginBrowser):
             if e.response.status_code in [520]:
                 log('Cloudflare is unable to connect to Doctolib server. Please retry later.', color='red')
             raise
+        
+        def log_in_info() -> str:
         try:
             self.login.go(json={'kind': 'patient',
                                 'username': self.username,
@@ -275,6 +280,7 @@ class Doctolib(LoginBrowser):
             print('Wrong login/password')
             return False
 
+        def session_auth() -> str:
         if self.page.redirect() == "/sessions/two-factor":
             print("Requesting 2fa code...")
             if not code:
@@ -293,9 +299,11 @@ class Doctolib(LoginBrowser):
 
         return True
 
-    def find_centers(self, where, motives=None, page=1):
+    class find_centers(self, where, motives=None, page=1):
         if motives is None:
             motives = self.vaccine_motives.keys()
+
+        def location() -> str:
         for city in where:
             try:
                 self.centers.go(where=city, params={
@@ -316,6 +324,7 @@ class Doctolib(LoginBrowser):
 
             next_page = self.page.get_next_page()
 
+            def iter_center() -> str:
             for i in self.page.iter_centers_ids():
                 page = self.center_result.open(
                     id=i,
@@ -331,6 +340,7 @@ class Doctolib(LoginBrowser):
                 except KeyError:
                     pass
 
+            def nextpage() -> str:
             if next_page:
                 for center in self.find_centers(where, motives, next_page):
                     yield center
